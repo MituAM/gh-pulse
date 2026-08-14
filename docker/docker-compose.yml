@@ -1,0 +1,38 @@
+# A one-node Flink cluster for running the streaming job the way it would be deployed.
+#
+#   sbt flink/assembly
+#   docker compose -f docker/docker-compose.yml up -d
+#   docker compose -f docker/docker-compose.yml exec jobmanager \
+#     flink run -c ghpulse.flink.FlinkPipeline /jars/gh-pulse-flink.jar \
+#       --input /data/sample/events.jsonl --top 10
+#
+# The web UI is on http://localhost:8081 — the job graph there shows the two-stage leaderboard
+# and the keyed state the burst detector holds.
+
+services:
+  jobmanager:
+    image: flink:1.18.1-scala_2.12-java17
+    command: jobmanager
+    ports:
+      - "8081:8081"
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: jobmanager
+        rest.flamegraph.enabled: true
+    volumes:
+      - ../data:/data:ro
+      - ../modules/flink/target/scala-2.12:/jars:ro
+
+  taskmanager:
+    image: flink:1.18.1-scala_2.12-java17
+    command: taskmanager
+    depends_on:
+      - jobmanager
+    scale: 1
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 4
+    volumes:
+      - ../data:/data:ro
+      - ../modules/flink/target/scala-2.12:/jars:ro

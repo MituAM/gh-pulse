@@ -1,0 +1,13 @@
+target/
+project/target/
+project/project/
+.bsp/
+.bloop/
+.metals/
+.idea/
+*.iml
+*.class
+*.log
+
+# Downloaded GH Archive hours; only data/sample/ is version controlled.
+data/raw/
