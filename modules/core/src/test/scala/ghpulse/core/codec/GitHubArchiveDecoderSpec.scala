@@ -52,6 +52,41 @@ class GitHubArchiveDecoderSpec extends AnyFunSuite with Matchers {
     event.payload.changedFiles shouldBe Some(2)
   }
 
+  // The shapes below are what the Events API (and so GH Archive) has emitted since 2025-10-07:
+  // pushes carry no commits or counts, pull requests a five-field stub and a new "merged" action.
+  test("decodes the trimmed post-2025 push payload") {
+    val json =
+      """{"id":"50606999152","type":"PushEvent",
+        | "actor":{"id":1,"login":"ada","display_login":"ada","gravatar_id":"","url":"u","avatar_url":"a"},
+        | "repo":{"id":1458535872,"name":"acme/rocket","url":"u"},
+        | "payload":{"repository_id":1458535872,"push_id":50606999152,"ref":"refs/heads/main",
+        |   "head":"c450bd8","before":"d41730a"},
+        | "public":true,"created_at":"2026-11-17T15:08:07Z"}""".stripMargin
+
+    val event = decoder.decode(json).getOrElse(fail("expected a decoded event"))
+
+    event.kind shouldBe EventKind.Push
+    event.payload.ref shouldBe Some("refs/heads/main")
+    event.payload.distinctSize shouldBe None
+    event.payload.pushSize shouldBe None
+    event.payload.commits shouldBe Nil
+  }
+
+  test("decodes the trimmed post-2025 pull request payload") {
+    val json =
+      """{"id":"2","type":"PullRequestEvent","actor":{"id":1,"login":"ada"},
+        | "repo":{"id":2,"name":"acme/rocket"},"created_at":"2026-11-17T15:00:00Z",
+        | "payload":{"action":"merged","number":73,"assignee":null,"assignees":[],"labels":[],
+        |   "pull_request":{"id":9,"number":73,"url":"u","head":{"ref":"x"},"base":{"ref":"main"}}}}""".stripMargin
+
+    val event = decoder.decode(json).getOrElse(fail("expected a decoded event"))
+
+    event.payload.action shouldBe Some("merged")
+    event.payload.pullRequestNumber shouldBe Some(73)
+    event.payload.merged shouldBe None
+    event.payload.additions shouldBe None
+  }
+
   test("an event type this project has never heard of decodes rather than fails") {
     val json =
       """{"id":"1","type":"SponsorshipEvent","actor":{"id":1,"login":"ada"},

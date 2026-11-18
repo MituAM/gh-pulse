@@ -1,0 +1,11 @@
+# /etc/cloudflared/config.yml — replace <TUNNEL-UUID> and the hostname (see live/README.md).
+tunnel: <TUNNEL-UUID>
+credentials-file: /etc/cloudflared/<TUNNEL-UUID>.json
+
+ingress:
+  - hostname: pulse.example.com
+    service: http://127.0.0.1:8080
+    originRequest:
+      connectTimeout: 10s
+  # Anything else that reaches this tunnel gets a 404 rather than the dashboard.
+  - service: http_status:404

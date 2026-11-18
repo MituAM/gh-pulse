@@ -1,0 +1,36 @@
+[Unit]
+Description=gh-pulse: GitHub public Events API poller
+Documentation=https://github.com/MituAM/gh-pulse
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=ghpulse
+Group=ghpulse
+# GITHUB_TOKEN=... (a fine-grained token with no permissions is enough: 5000 requests/hour)
+EnvironmentFile=-/etc/gh-pulse/poller.env
+ExecStart=/usr/bin/python3 -u /opt/gh-pulse/poller/ghpulse_poller.py \
+    --out /var/lib/gh-pulse/incoming \
+    --status /var/lib/gh-pulse/public/ingest.json
+Restart=always
+RestartSec=10
+# Files must be world-readable: nginx (www-data) serves ingest.json.
+UMask=0022
+
+# Hardening: it only needs the network and its own state directory.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+ReadWritePaths=/var/lib/gh-pulse
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

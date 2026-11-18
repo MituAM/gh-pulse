@@ -1,0 +1,48 @@
+[Unit]
+Description=gh-pulse: live Flink job (bursts + trending -> state.json)
+Documentation=https://github.com/MituAM/gh-pulse
+After=network.target gh-pulse-poller.service
+Wants=gh-pulse-poller.service
+
+[Service]
+Type=simple
+User=ghpulse
+Group=ghpulse
+# Flink reaches into JDK internals that Java 17+ seals off; these are the same opens build.sbt uses.
+Environment="JAVA_OPTS=-Xms256m -Xmx1g -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError \
+ --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED \
+ --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED \
+ --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED \
+ --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED \
+ --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED \
+ --add-opens=java.base/sun.nio.cs=ALL-UNNAMED --add-opens=java.base/sun.security.action=ALL-UNNAMED \
+ --add-opens=java.base/sun.util.calendar=ALL-UNNAMED"
+# Extra job flags (e.g. --burst-events 8 --slide 1) go in /etc/gh-pulse/flink.env as GH_PULSE_ARGS=...
+Environment=GH_PULSE_ARGS=
+EnvironmentFile=-/etc/gh-pulse/flink.env
+ExecStart=/usr/bin/java $JAVA_OPTS -jar /opt/gh-pulse/gh-pulse-live.jar \
+    --input /var/lib/gh-pulse/incoming \
+    --state-file /var/lib/gh-pulse/public/state.json \
+    $GH_PULSE_ARGS
+# The job has no checkpoints: on any failure the JVM exits, systemd restarts it, and it rebuilds its
+# state by replaying the poller's retained batch files (two hours by default).
+Restart=always
+RestartSec=15
+UMask=0022
+SuccessExitStatus=143
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+ReadWritePaths=/var/lib/gh-pulse
+MemoryMax=1536M
+
+[Install]
+WantedBy=multi-user.target

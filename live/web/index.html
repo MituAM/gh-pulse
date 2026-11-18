@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>gh-pulse · live GitHub radar</title>
+  <meta name="description" content="Bot swarms and repositories blowing up on GitHub right now, computed live by Apache Flink.">
+  <meta property="og:title" content="gh-pulse · live GitHub radar">
+  <meta property="og:description" content="Who is spamming GitHub right now, and which repos are blowing up.">
+  <meta name="theme-color" content="#05080a">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="scanlines" aria-hidden="true"></div>
+
+  <header class="top">
+    <div class="radar" aria-hidden="true">
+      <svg viewBox="0 0 200 200" id="radar">
+        <circle cx="100" cy="100" r="96" class="ring"/>
+        <circle cx="100" cy="100" r="64" class="ring"/>
+        <circle cx="100" cy="100" r="32" class="ring"/>
+        <line x1="4" y1="100" x2="196" y2="100" class="ring"/>
+        <line x1="100" y1="4" x2="100" y2="196" class="ring"/>
+        <g id="blips"></g>
+      </svg>
+      <div class="sweep"></div>
+    </div>
+
+    <div class="title">
+      <h1><span class="prompt">$</span> gh-pulse <span class="cursor">_</span></h1>
+      <p class="tagline">who is spamming GitHub right now, and what is blowing up</p>
+      <div class="status" id="status">
+        <span class="dot" id="live-dot"></span>
+        <span id="live-label">CONNECTING</span>
+        <span class="sep">·</span>
+        <span id="status-ingest">waiting for data</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="panel" aria-labelledby="bursts-title">
+      <div class="panel-head">
+        <h2 id="bursts-title"><span class="hash">#</span> bot swarms &amp; bursts</h2>
+        <span class="rule" id="burst-rule"></span>
+      </div>
+      <ol class="feed" id="bursts" aria-live="polite"></ol>
+      <p class="empty" id="bursts-empty">scanning… no bursts in the current feed yet</p>
+    </section>
+
+    <section class="panel" aria-labelledby="trending-title">
+      <div class="panel-head">
+        <h2 id="trending-title"><span class="hash">#</span> repos blowing up now</h2>
+        <span class="rule" id="trending-rule"></span>
+      </div>
+      <div class="board-wrap">
+        <table class="board">
+          <thead>
+            <tr>
+              <th class="c-rank">#</th>
+              <th class="c-move"></th>
+              <th class="c-repo">repository</th>
+              <th class="c-num">score</th>
+              <th class="c-num c-delta">Δ</th>
+              <th class="c-num c-stat" title="pushes">push</th>
+              <th class="c-num c-stat" title="pull requests (merged)">pr</th>
+              <th class="c-num c-stat" title="issue events (opened, closed, labelled…)">issue</th>
+              <th class="c-num c-stat" title="comments and code reviews">cmt</th>
+              <th class="c-num c-stat" title="new stars">★</th>
+              <th class="c-num c-stat" title="forks">fork</th>
+            </tr>
+          </thead>
+          <tbody id="board"></tbody>
+        </table>
+      </div>
+      <p class="empty" id="board-empty">warming up — the first window closes a few minutes after start</p>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p>
+      Fed by GitHub's public Events API — a <em>sample</em> of the firehose, arriving 5+ minutes after
+      the fact. Bursts and scores are computed over that sample, so a burst here means far more
+      real activity than the count shows.
+    </p>
+    <p class="stack">
+      Powered by <strong>Apache Flink</strong> + a pure Scala core ·
+      <a href="https://github.com/MituAM/gh-pulse" rel="noopener">github.com/MituAM/gh-pulse</a>
+    </p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

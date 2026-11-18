@@ -26,6 +26,27 @@ class ActivityStatsSpec extends AnyFunSuite with Matchers {
     ActivityStats.of(withNeither).commits shouldBe 4L // from the commits array
   }
 
+  test("a push in the trimmed post-2025 format counts as one commit, not zero") {
+    val trimmed = Fixtures
+      .push("e1", T0, "ada", "acme/rocket", commits = 4)
+      .copy(payload = Payload.empty.copy(ref = Some("refs/heads/main")))
+
+    val stats = ActivityStats.of(trimmed)
+    stats.pushes shouldBe 1L
+    stats.commits shouldBe 1L
+  }
+
+  test("the post-2025 'merged' action counts as a merge, without line counts") {
+    val merged = Fixtures
+      .pullRequest("e1", T0, "ada", "acme/rocket", "opened")
+      .copy(payload = Payload.empty.copy(action = Some("merged"), pullRequestNumber = Some(7)))
+
+    val stats = ActivityStats.of(merged)
+    stats.pullRequests shouldBe 1L
+    stats.mergedPullRequests shouldBe 1L
+    stats.linesAdded shouldBe 0L
+  }
+
   test("only a merged pull request contributes line counts") {
     val opened = Fixtures.pullRequest("e1", T0, "ada", "acme/rocket", "opened", additions = 100)
     ActivityStats.of(opened).pullRequests shouldBe 1L

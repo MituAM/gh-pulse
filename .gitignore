@@ -11,3 +11,15 @@ project/project/
 
 # Downloaded GH Archive hours; only data/sample/ is version controlled.
 data/raw/
+
+# Live dashboard: the deploy bundle's jar and local preview snapshots.
+live/gh-pulse-live.jar
+live/web/api/
+# GitHub token for the poller. Never commit it.
+live/deploy/poller.env
+# Personal deployment notes (SSH alias, LAN address).
+DEPLOY_STEPS.txt
+
+# Python bytecode caches.
+__pycache__/
+*.pyc

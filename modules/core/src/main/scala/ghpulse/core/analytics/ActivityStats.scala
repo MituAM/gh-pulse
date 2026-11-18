@@ -29,14 +29,24 @@ object ActivityStats extends Serializable {
 
   val empty: ActivityStats = ActivityStats(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 
+  /** What a push counts for when its payload carries no commit information (the post-2025 format):
+    * a push lands at least one commit, and counting it as zero would make pushes invisible to the
+    * score.
+    */
+  private val TrimmedPushCommits: Int = 1
+
   /** Projects a single event onto the counters it contributes to.
     *
-    * Two judgement calls worth knowing about:
+    * Judgement calls worth knowing about:
     *   - a push contributes `distinct_size` commits, not `size`, so commits that were already
     *     counted on another branch are not counted twice;
     *   - a pull request only contributes line counts when it is actually merged, because GitHub
     *     emits a `PullRequestEvent` on open, synchronize and close alike and the diff size is
-    *     repeated on every one of them.
+    *     repeated on every one of them;
+    *   - since 2025-10-07 GitHub strips commit counts from `PushEvent` and diff details from
+    *     `PullRequestEvent` (in the Events API, and therefore in GH Archive too). A push with no
+    *     count information at all is counted as one commit rather than zero, and a merge is
+    *     recognised by the newer `action: "merged"` as well as the older `closed` + `merged`.
     */
   def of(event: GitHubEvent): ActivityStats = {
     val p = event.payload
@@ -44,11 +54,14 @@ object ActivityStats extends Serializable {
 
     event.kind match {
       case EventKind.Push =>
-        val commitCount = p.distinctSize.orElse(p.pushSize).getOrElse(p.commits.size)
+        val commitCount = p.distinctSize
+          .orElse(p.pushSize)
+          .getOrElse(if (p.commits.nonEmpty) p.commits.size else TrimmedPushCommits)
         base.copy(pushes = 1L, commits = commitCount.toLong.max(0L))
 
       case EventKind.PullRequest =>
-        val wasMerged = p.action.contains("closed") && p.merged.contains(true)
+        val wasMerged =
+          p.action.contains("merged") || (p.action.contains("closed") && p.merged.contains(true))
         base.copy(
           pullRequests = 1L,
           mergedPullRequests = if (wasMerged) 1L else 0L,
