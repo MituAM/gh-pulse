@@ -5,10 +5,15 @@
 [![Spark 3.5](https://img.shields.io/badge/spark-3.5.1-e25a1c.svg)](https://spark.apache.org/)
 [![Flink 1.18](https://img.shields.io/badge/flink-1.18.1-e6526f.svg)](https://flink.apache.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Live dashboard](https://img.shields.io/badge/live-radar.algotricks.com-39ff88.svg)](https://radar.algotricks.com)
 
 Analytics over the public GitHub event firehose, computed twice: once as a Spark batch job and once as a Flink streaming job, from **one shared Scala core that neither engine can bypass**.
 
 The interesting part is not that both engines are used. It is that the business rules — what counts as a commit, how a repository is scored, what makes a burst — exist exactly once, as pure Scala with no dependency on either runtime, and both engines are held to the same reference answers by the test suite. A rule change lands in batch and in streaming simultaneously, or the build goes red.
+
+**See it running: [radar.algotricks.com](https://radar.algotricks.com)** — the same Flink operators,
+fed live from GitHub, showing which accounts are bursting and which repositories are blowing up
+right now.
 
 ```
                     ┌───────────────────────────────────────────────┐
@@ -38,14 +43,12 @@ The interesting part is not that both engines are used. It is that the business 
                         └───────────────────────────────────────┘
 ```
 
-
-
 ## Quick start
 
 Needs only a JDK (11 or 17) and `sbt`. Nothing to install, no cluster, no network — a sample of a real GH Archive hour is committed.
 
 ```bash
-sbt test        # 111 tests: unit, property-based, Spark and Flink integration
+sbt test        # 121 tests: unit, property-based, Spark and Flink integration
 sbt demoSpark   # batch analytics over the sample
 sbt demoFlink   # the same analytics as a stream, on an embedded Flink cluster
 ```
@@ -93,7 +96,8 @@ The same bursts, from the same bytes, found by two completely different executio
 
 ### Running on the real firehose
 
-[GH Archive] publishes every public GitHub event, one gzipped file per hour, going back to 2011.
+[GH Archive](https://www.gharchive.org/) publishes every public GitHub event, one gzipped file per
+hour, going back to 2011.
 
 ```bash
 ./scripts/fetch-data.sh 2024-01-15 0 23      # a day, ~3 GB compressed
@@ -102,6 +106,27 @@ sbt 'spark/runMain ghpulse.spark.SparkPipeline --input data/raw --top 25'
 
 Both jobs read files, directories and globs, and decompress `.gz` on the way in.
 Windows users: `scripts/fetch-data.ps1` does the same thing.
+
+## Live dashboard
+
+**[radar.algotricks.com](https://radar.algotricks.com)** runs the streaming half of this project
+around the clock, on a home server behind a Cloudflare Tunnel:
+
+```
+GitHub Events API → poller (Python) → NDJSON files → LiveDashboardJob (Flink, java -jar)
+                                                      ├─ bursts:   BurstDetector + target repos
+                                                      └─ trending: sliding 60-min top 15
+                  → state.json → nginx → Cloudflare cache → browsers
+```
+
+The burst rule and the scoring are the shared core, unchanged; the live job only adds a continuous
+file source, repository attribution for bursts, and a writer that turns both result streams into
+one JSON snapshot. There is no application server — the page is static and Cloudflare caches the
+data, so a traffic spike costs the home server one request every few seconds.
+
+The public Events API is a *sample* of the firehose, delayed by about five minutes, so the live job
+uses a burst rule tuned for that (5 events in 10 minutes). [`live/README.md`](live/README.md)
+explains the data's limits and how to run the whole stack locally or deploy it.
 
 ## Using your own data
 
@@ -188,6 +213,12 @@ using `spark.read.json`. Spark's own reader is faster and splittable; a second p
 a second set of bugs, and the parity claim would be worth much less. The trade-off is deliberate,
 and swapping it back is a one-line change in [`EventSource`](modules/spark/src/main/scala/ghpulse/spark/EventSource.scala).
 
+**Why a push with no commit count scores one commit.** Since 2025-10-07 GitHub's Events API — and
+therefore GH Archive, which mirrors it — sends `PushEvent` without commits or counts, and
+`PullRequestEvent` without diff stats, reporting a merge as `action: "merged"`. The decoder never
+failed on the new shape; the scores silently went to zero. `ActivityStats.of` now reads both
+shapes, and tests pin each one.
+
 **Why Scala 2.12.** Spark 3.5 and Flink 1.18 both publish their Scala APIs for 2.12 only. Flink
 deprecated its Scala DataStream API in 1.18 (FLIP-265); it remains the most idiomatic way to drive
 Flink from Scala, and the deprecation warnings are muted in that module alone.
@@ -200,7 +231,7 @@ sbt core/test     # fast: pure logic, no engine starts
 sbt verify        # scalafmt check + the full suite, which is what CI runs
 ```
 
-111 tests across three layers:
+121 tests across three layers:
 
 - **Property-based** (ScalaCheck) — monoid laws, `TopK` against a full sort, and the burst rule
   against a direct statement of what a burst is.
@@ -227,7 +258,9 @@ sbt spark/assembly flink/assembly
 ```
 
 Spark and Flink are `provided`, so the jars are small and never fight the versions already on the
-cluster.
+cluster. The live dashboard is the exception: `sbt live/assembly` bundles Flink into one
+`gh-pulse-live.jar` that runs with plain `java -jar` and needs no cluster at all (see
+[`live/README.md`](live/README.md)).
 
 ```bash
 spark-submit --class ghpulse.spark.SparkPipeline --master yarn \
@@ -273,7 +306,9 @@ Both entry points take the same flags, parsed by the same code:
 ```
 modules/core/     domain model, decoders, pure analytics — no Spark, no Flink
 modules/spark/    batch adapters + jobs
-modules/flink/    streaming adapters + jobs
+modules/flink/    streaming adapters + jobs (incl. the live dashboard job)
+modules/live/     packaging only: the self-contained gh-pulse-live.jar
+live/             the dashboard: poller, web page, deployment files
 data/sample/      1,335 events from a real GH Archive hour (see data/sample/README.md)
 scripts/          fetch real data; rebuild the sample
 docker/           one-node Flink cluster
@@ -281,12 +316,10 @@ docker/           one-node Flink cluster
 
 ## Requirements
 
-JDK 11 or 17, and sbt 1.10+. Java 8 is not supported: the test JVMs need `--add-opens` to reach the
+JDK 11 or 17, and sbt 1.10+ (the live jar also runs on Java 21, Debian 13's default). Java 8 is not supported: the test JVMs need `--add-opens` to reach the
 JDK internals Spark and Flink use, and a Java 8 launcher rejects the flag.
 
 ## License
 
 MIT — see [LICENSE](LICENSE). GH Archive data is published under the
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) license.
-
-[GH Archive]: https://www.gharchive.org/

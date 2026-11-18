@@ -39,6 +39,30 @@ object EventStream {
     withEventTime(lines.flatMap(new DecodeEvent(decoder)), maxOutOfOrderness)
   }
 
+  /** Follows a directory forever, reading every new file that appears in it.
+    *
+    * This is the live counterpart of [[fromPath]]: the poller drops one complete newline-delimited
+    * JSON file per poll into `directory` (written under a hidden name and renamed into place, so a
+    * file is never seen half written — `FileSource` skips names starting with `.` or `_`). The
+    * stream is unbounded, so windows close as the watermark advances with new data, not at the end
+    * of input.
+    */
+  def followDirectory(
+      env: StreamExecutionEnvironment,
+      directory: String,
+      decoder: EventDecoder,
+      maxOutOfOrderness: Duration,
+      discoverEvery: Duration
+  ): DataStream[GitHubEvent] = {
+    val source = FileSource
+      .forRecordStreamFormat(new TextLineInputFormat(), new Path(directory))
+      .monitorContinuously(discoverEvery)
+      .build()
+
+    val lines = env.fromSource(source, WatermarkStrategy.noWatermarks[String](), "live-events")
+    withEventTime(lines.flatMap(new DecodeEvent(decoder)).name("decode"), maxOutOfOrderness)
+  }
+
   /** Assigns event time and the watermarks that decide when a window may close.
     *
     * `maxOutOfOrderness` is the one real tuning knob in the streaming job: GH Archive genuinely

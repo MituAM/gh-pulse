@@ -133,8 +133,50 @@ lazy val flink = (project in file("modules/flink"))
     )
   )
 
+// The home-server dashboard: the flink module plus the Flink runtime it is normally `Provided`
+// with, assembled into one jar that `java -jar` runs on an embedded mini cluster. No Flink
+// installation, no Docker. `flink/assembly` still builds the slim cluster jar as before.
+lazy val live = (project in file("modules/live"))
+  .dependsOn(flink)
+  .settings(commonSettings)
+  .settings(
+    name := "gh-pulse-live",
+    publish / skip := true,
+    libraryDependencies ++= Seq(
+      "org.apache.flink" %% "flink-scala" % flinkVersion,
+      "org.apache.flink" %% "flink-streaming-scala" % flinkVersion,
+      "org.apache.flink" % "flink-clients" % flinkVersion,
+      "org.apache.flink" % "flink-connector-files" % flinkVersion,
+      "org.apache.logging.log4j" % "log4j-slf4j-impl" % log4jVersion,
+      "org.apache.logging.log4j" % "log4j-core" % log4jVersion
+    ),
+    assembly / mainClass := Some("ghpulse.flink.live.LiveDashboardJob"),
+    assembly / assemblyJarName := "gh-pulse-live.jar",
+    assembly / assemblyMergeStrategy := {
+      case PathList("META-INF", "services", _ @_*) => MergeStrategy.concat
+      // log4j2 finds its appenders through this index; discarding it silences all logging.
+      case PathList(
+            "META-INF",
+            "org",
+            "apache",
+            "logging",
+            "log4j",
+            "core",
+            "config",
+            "plugins",
+            "Log4j2Plugins.dat"
+          ) =>
+        MergeStrategy.first
+      case PathList("META-INF", _ @_*) => MergeStrategy.discard
+      case "log4j2.properties" => MergeStrategy.preferProject
+      case "reference.conf" => MergeStrategy.concat
+      case "module-info.class" => MergeStrategy.discard
+      case _ => MergeStrategy.first
+    }
+  )
+
 lazy val root = (project in file("."))
-  .aggregate(core, spark, flink)
+  .aggregate(core, spark, flink, live)
   .settings(
     name := "gh-pulse",
     publish / skip := true
