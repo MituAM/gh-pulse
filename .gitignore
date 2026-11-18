@@ -19,3 +19,7 @@ live/web/api/
 live/deploy/poller.env
 # Personal deployment notes (SSH alias, LAN address).
 DEPLOY_STEPS.txt
+
+# Python bytecode caches.
+__pycache__/
+*.pyc
